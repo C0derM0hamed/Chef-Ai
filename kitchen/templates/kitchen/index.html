@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI Chef Assistant</title>
+  </head>
+  <body>
+    <h1>AI Chef Assistant</h1>
+    <form id="chef-form" method="post" action="{% url 'chef_assistant' %}">
+      {% csrf_token %}
+      <label for="ingredients">Ingredients</label>
+      <textarea id="ingredients" name="ingredients" rows="3" required></textarea>
+      <button type="submit">Suggest meals</button>
+    </form>
+    <p id="loading" hidden>Generating…</p>
+    <div id="results"></div>
+    <script>
+      const form = document.getElementById("chef-form");
+      const loading = document.getElementById("loading");
+      const results = document.getElementById("results");
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const csrf = document.querySelector(
+          "[name=csrfmiddlewaretoken]"
+        ).value;
+        loading.hidden = false;
+        results.innerHTML = "";
+        const res = await fetch(form.action, {
+          method: "POST",
+          headers: { "X-CSRFToken": csrf },
+          body: fd,
+        });
+        const data = await res.json();
+        loading.hidden = true;
+        if (data.error) {
+          results.textContent = data.error;
+          return;
+        }
+        (data.meals || []).forEach((m) => {
+          const el = document.createElement("div");
+          el.textContent = m.name + " — " + m.cooking_time + " min";
+          results.appendChild(el);
+        });
+      });
+    </script>
+  </body>
+</html>
