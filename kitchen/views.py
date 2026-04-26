@@ -1,5 +1,4 @@
 import json
-import re
 
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -17,7 +16,7 @@ llm = init_chat_model(
 )
 
 # Same system prompt as the notebook (JSON array of meals).
-SYSTEM_PROMPT = """
+system_prompt = """
 You are a chef.
 
 Give meals based on ingredients.
@@ -38,35 +37,12 @@ Format:
 """
 
 
-def _stream_llm_to_text(message: HumanMessage) -> str:
-    """Accumulate streamed tokens — same pattern as the notebook (cells 7–8)."""
-    full_response = ""
-    for chunk in llm.stream([message]):
-        if chunk.content:
-            full_response += chunk.content
-    return full_response
-
-
-def _parse_model_json(raw: str) -> list:
-    """json.loads on model output; strip optional markdown fences if the model adds them."""
-    text = raw.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z0-9]*\s*\n", "", text)
-        text = re.sub(r"\n```\s*$", "", text)
-    return json.loads(text)
-
-
 @ensure_csrf_cookie
 @require_http_methods(["GET", "POST"])
 def chef_assistant(request):
-    """
-    Single view: GET — page with form; POST — JSON meals (name, cooking_time, instructions only).
-    AI path matches the notebook, but ingredients come from the form text (not an image).
-    """
     if request.method == "GET":
         return render(request, "kitchen/index.html")
 
-    # POST: ingredients from form
     ingredients = (request.POST.get("ingredients") or "").strip()
     if not ingredients:
         return JsonResponse(
@@ -74,13 +50,12 @@ def chef_assistant(request):
             status=400,
         )
 
-    # Text-only HumanMessage (notebook used text + image; we keep the same list-of-parts shape).
     message = HumanMessage(
         content=[
             {
                 "type": "text",
                 "text": (
-                    SYSTEM_PROMPT
+                    system_prompt
                     + " Use these ingredients: "
                     + ingredients
                 ),
@@ -89,8 +64,13 @@ def chef_assistant(request):
     )
 
     try:
-        full_response = _stream_llm_to_text(message)
-        data = _parse_model_json(full_response)
+        full_response = ""
+        for chunk in llm.stream([message]):
+            if chunk.content:
+                full_response += chunk.content
+
+        clean = full_response.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean)
     except (json.JSONDecodeError, TypeError) as e:
         return JsonResponse(
             {
@@ -109,6 +89,8 @@ def chef_assistant(request):
         {
             "name": m.get("name", ""),
             "cooking_time": m.get("cooking_time", 0),
+            "servings": m.get("servings", 0),
+            "ingredients": m.get("ingredients", []),
             "instructions": m.get("instructions", []),
         }
         for m in data

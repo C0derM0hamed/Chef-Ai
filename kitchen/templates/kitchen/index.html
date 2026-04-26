@@ -94,43 +94,71 @@
       }
 
       function renderMeals(meals) {
-        results.innerHTML = "";
-        if (!meals || meals.length === 0) {
-          results.innerHTML =
-            '<p class="text-center text-secondary">No meals returned. Try different ingredients.</p>';
-          return;
-        }
-        meals.forEach((m) => {
-          const col = document.createElement("div");
-          col.className = "col-12 col-md-6 col-lg-5";
-          const time =
-            m.cooking_time != null
-              ? m.cooking_time + " min"
-              : "—";
-          const steps = (m.instructions || [])
-            .map(
-              (s) =>
-                '<li class="mb-1">' +
-                s.replaceAll("<", "&lt;").replaceAll(">", "&gt;") +
-                "</li>"
-            )
-            .join("");
-          col.innerHTML =
-            '<div class="card h-100">' +
-            '<div class="card-body d-flex flex-column">' +
-            '<h2 class="card-title h5 mb-1">' +
-            (m.name || "Meal") +
-            "</h2>" +
-            '<p class="small text-muted mb-2">Cooking time: ' +
-            time +
-            "</p>" +
-            "<ol class='ps-3 mb-0 small flex-grow-1'>" +
-            steps +
-            "</ol>" +
-            "</div></div>";
-          results.appendChild(col);
-        });
-      }
+  results.innerHTML = "";
+
+  if (!meals || meals.length === 0) {
+    results.innerHTML =
+      '<p class="text-center text-secondary">No meals returned. Try different ingredients.</p>';
+    return;
+  }
+
+  meals.forEach((m) => {
+    const col = document.createElement("div");
+    col.className = "col-12 col-md-6 col-lg-5";
+
+    const time = m.cooking_time ? m.cooking_time + " min" : "—";
+    const servings = m.servings || "—";
+
+   
+    const ingredients = (m.ingredients || [])
+      .map(
+        (i) =>
+          `<li>${i.name} ${
+            i.status === "available" ? "yes" : "no"
+          }</li>`
+      )
+      .join("");
+
+   
+    const steps = (m.instructions || [])
+      .map(
+        (s) =>
+          `<li class="mb-1">${s
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")}</li>`
+      )
+      .join("");
+
+    col.innerHTML =
+      `<div class="card h-100">
+        <div class="card-body d-flex flex-column">
+
+          <h2 class="card-title h5 mb-1">${m.name || "Meal"}</h2>
+
+          <p class="small text-muted mb-1">
+            Cooking Time: ${time}
+          </p>
+
+          <p class="small text-muted mb-2">
+             Servings: ${servings}
+          </p>
+
+          <h6>Ingredients:</h6>
+          <ul class="small">
+            ${ingredients}
+          </ul>
+
+          <h6>Instructions:</h6>
+          <ol class="ps-3 mb-0 small flex-grow-1">
+            ${steps}
+          </ol>
+
+        </div>
+      </div>`;
+
+    results.appendChild(col);
+  });
+}
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
