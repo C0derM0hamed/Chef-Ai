@@ -116,3 +116,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Allow modest kitchen photos in multipart form posts (default 2.5MB is easy to exceed).
+FILE_UPLOAD_MAX_MEMORY_SIZE = 8 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 8 * 1024 * 1024
+
+# Local CSV (no user database) for meal logs used by the save tool
+NUTRITION_CSV_PATH = BASE_DIR / "data" / "nutrition_log.csv"
+MEDICAL_DISCLAIMER = (
+    "This is not medical or dietary advice. Consult a qualified professional."
+)
