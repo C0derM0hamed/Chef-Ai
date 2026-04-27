@@ -69,6 +69,16 @@ The repository can follow a **main**-first workflow and short-lived **feature** 
 
 **Workflow:** open a branch from `main`, make small **logical commits** with messages such as `feat: …` or `ui: …`, open a PR, then merge to `main` so `main` always stays runnable. You can align one PR with each row above, or land several as separate commits in a single integrated branch, depending on team preference.
 
+### Milestone commits in this repository (for review or `git checkout`)
+
+| Branch name (tag) | Points to | Contents |
+|-------------------|-----------|----------|
+| `feature/tools` / `feature/memory` | `dbac409` | Tools file, agent loop, session memory, settings, `.gitignore`, `data/` |
+| `feature/ui-update` | `4ffce0a` | Template: macros, search block, disclaimer |
+| `feature/nutrition-analysis` | `210f481` | Full feature line + README (`docs` commit) |
+
+`feature/tools` and `feature/memory` share the same commit because tools, agent, and memory were integrated together in one backend change (keeps the app coherent). `main` includes the merge commit on top of these.
+
 ## License / lab use
 
 Suitable for coursework or demos. Replace the mock search tool with a real map or vendor API if you go beyond a prototype.
