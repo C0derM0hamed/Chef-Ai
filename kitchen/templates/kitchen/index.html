@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AI Chef Assistant</title>
+    <title>Multi-Modal Nutrition AI</title>
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
       rel="stylesheet"
@@ -34,8 +34,10 @@
   <body>
     <div class="container py-5">
       <div class="text-center mb-4">
-        <h1 class="hero-title display-5 fw-semibold">AI Chef Assistant</h1>
-        <p class="text-secondary mb-0">Enter what you have on hand — we’ll suggest meals.</p>
+        <h1 class="hero-title display-5 fw-semibold">Multi-Modal Nutrition AI</h1>
+        <p class="text-secondary mb-0">
+          Ask about places, describe a meal, or add a kitchen photo — estimates only.
+        </p>
       </div>
 
       <form
@@ -43,23 +45,35 @@
         class="d-flex flex-column align-items-center mb-4"
         method="post"
         action="{% url 'chef_assistant' %}"
+        enctype="multipart/form-data"
       >
         {% csrf_token %}
         <div class="w-100 input-surface bg-white p-4 border border-light">
           <label for="ingredients" class="form-label small text-muted mb-1"
-            >Ingredients</label
+            >Message (ingredients, questions, "healthy food near me"…)</label
           >
           <textarea
             class="form-control"
             id="ingredients"
             name="ingredients"
             rows="3"
-            placeholder="e.g. chicken, rice, lemon, garlic…"
-            required
+            placeholder="e.g. grilled chicken with rice and vegetables… or find healthy food near me"
           ></textarea>
+          <label
+            for="photo"
+            class="form-label small text-muted mt-3 mb-1"
+            >Photo (optional)</label
+          >
+          <input
+            class="form-control form-control-sm"
+            type="file"
+            id="photo"
+            name="photo"
+            accept="image/*"
+          />
           <div class="d-flex justify-content-center mt-3">
             <button type="submit" class="btn btn-success btn-lg px-5 rounded-pill">
-              Suggest meals
+              Send
             </button>
           </div>
         </div>
@@ -70,10 +84,23 @@
         class="text-center text-secondary fw-medium mb-3"
         hidden
       >
-        Generating meal ideas for you…
+        The agent is thinking (tools, analysis)…
       </p>
 
+      <div
+        id="assistant-note"
+        class="row justify-content-center mb-3 d-none"
+      ></div>
+      <div
+        id="search-section"
+        class="row justify-content-center mb-3 d-none"
+      ></div>
       <div id="results" class="row g-3 justify-content-center"></div>
+
+      <p
+        class="text-center text-muted small mt-5 mb-0 px-2"
+        id="safety"
+      >{{ disclaimer }}</p>
     </div>
 
     <script
@@ -85,80 +112,141 @@
       const form = document.getElementById("chef-form");
       const loading = document.getElementById("loading");
       const results = document.getElementById("results");
+      const searchSection = document.getElementById("search-section");
+      const assistantNote = document.getElementById("assistant-note");
+      const safety = document.getElementById("safety");
 
-      function renderError(msg) {
+      function esc(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      }
+
+      function renderError(msg, disc) {
+        if (disc) safety.textContent = disc;
         results.innerHTML =
           '<div class="col-12 col-md-8"><div class="alert alert-danger" role="alert">' +
-          msg +
+          esc(msg) +
+          "</div></div>";
+        searchSection.classList.add("d-none");
+        searchSection.innerHTML = "";
+        assistantNote.classList.add("d-none");
+        assistantNote.innerHTML = "";
+      }
+
+      function renderSearch(sr) {
+        if (!sr || (typeof sr === "object" && Object.keys(sr).length === 0)) {
+          searchSection.classList.add("d-none");
+          searchSection.innerHTML = "";
+          return;
+        }
+        if (sr.raw) {
+          searchSection.classList.remove("d-none");
+          searchSection.innerHTML =
+            '<div class="col-12 col-lg-8"><div class="card"><div class="card-body small"><pre class="mb-0">' +
+            esc(String(sr.raw)) +
+            "</pre></div></div></div>";
+          return;
+        }
+        const restaurants = (sr.restaurants || [])
+          .map((r) => "<li>" + esc(r.name) + " — " + esc(r.note || "") + "</li>")
+          .join("");
+        const stores = (sr.grocery_stores || [])
+          .map((r) => "<li>" + esc(r.name) + " — " + esc(r.note || "") + "</li>")
+          .join("");
+        const tips = (sr.nutrition_info || [])
+          .map((t) => "<li>" + esc(t) + "</li>")
+          .join("");
+        searchSection.classList.remove("d-none");
+        searchSection.innerHTML =
+          '<div class="col-12 col-lg-8">' +
+          '<div class="card border-primary border-opacity-25">' +
+          '<div class="card-body">' +
+          '<h2 class="h6 text-primary">Search tool results (may be sample data)</h2>' +
+          (restaurants
+            ? '<p class="text-muted small mb-1">Restaurants</p><ul class="small">' +
+              restaurants +
+              "</ul>"
+            : "") +
+          (stores
+            ? '<p class="text-muted small mb-1">Stores</p><ul class="small">' + stores + "</ul>"
+            : "") +
+          (tips
+            ? '<p class="text-muted small mb-1">Notes</p><ul class="small">' + tips + "</ul>"
+            : "") +
+          "</div></div></div>";
+      }
+
+      function renderAssistantNote(msg) {
+        if (!msg) {
+          assistantNote.classList.add("d-none");
+          assistantNote.innerHTML = "";
+          return;
+        }
+        assistantNote.classList.remove("d-none");
+        assistantNote.innerHTML =
+          '<div class="col-12 col-md-8">' +
+          '<div class="alert alert-info mb-0" role="status">' +
+          esc(msg).replaceAll("\n", "<br/>") +
           "</div></div>";
       }
 
+      function ingredientLine(ing) {
+        if (typeof ing === "string") return esc(ing);
+        if (ing && ing.name) return esc(ing.name) + (ing.status ? " — " + esc(ing.status) : "");
+        return esc(JSON.stringify(ing));
+      }
+
       function renderMeals(meals) {
-  results.innerHTML = "";
-
-  if (!meals || meals.length === 0) {
-    results.innerHTML =
-      '<p class="text-center text-secondary">No meals returned. Try different ingredients.</p>';
-    return;
-  }
-
-  meals.forEach((m) => {
-    const col = document.createElement("div");
-    col.className = "col-12 col-md-6 col-lg-5";
-
-    const time = m.cooking_time ? m.cooking_time + " min" : "—";
-    const servings = m.servings || "—";
-
-   
-    const ingredients = (m.ingredients || [])
-      .map(
-        (i) =>
-          `<li>${i.name} ${
-            i.status === "available" ? "yes" : "no"
-          }</li>`
-      )
-      .join("");
-
-   
-    const steps = (m.instructions || [])
-      .map(
-        (s) =>
-          `<li class="mb-1">${s
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")}</li>`
-      )
-      .join("");
-
-    col.innerHTML =
-      `<div class="card h-100">
-        <div class="card-body d-flex flex-column">
-
-          <h2 class="card-title h5 mb-1">${m.name || "Meal"}</h2>
-
-          <p class="small text-muted mb-1">
-            Cooking Time: ${time}
-          </p>
-
-          <p class="small text-muted mb-2">
-             Servings: ${servings}
-          </p>
-
-          <h6>Ingredients:</h6>
-          <ul class="small">
-            ${ingredients}
-          </ul>
-
-          <h6>Instructions:</h6>
-          <ol class="ps-3 mb-0 small flex-grow-1">
-            ${steps}
-          </ol>
-
-        </div>
-      </div>`;
-
-    results.appendChild(col);
-  });
-}
+        results.innerHTML = "";
+        if (!meals || meals.length === 0) {
+          results.innerHTML =
+            '<p class="text-center text-secondary">No meal JSON this turn. See the note above or try again.</p>';
+          return;
+        }
+        meals.forEach((m) => {
+          const col = document.createElement("div");
+          col.className = "col-12 col-md-6 col-lg-5";
+          const ing = (m.ingredients || [])
+            .map((i) => "<li class='small'>" + ingredientLine(i) + "</li>")
+            .join("");
+          const rec = (m.recommendations || [])
+            .map((r) => "<li class='mb-1 small'>" + esc(r) + "</li>")
+            .join("");
+          col.innerHTML =
+            '<div class="card h-100">' +
+            "<div class='card-body d-flex flex-column'>" +
+            "<h2 class='card-title h5 mb-2'>" +
+            esc(m.meal || "Meal") +
+            "</h2>" +
+            "<div class='row row-cols-2 g-2 small mb-2'>" +
+            "<div class='col'><div class='border rounded p-2 bg-light'>Calories<br/><strong>" +
+            esc(m.calories != null ? m.calories : "—") +
+            "</strong></div></div>" +
+            "<div class='col'><div class='border rounded p-2 bg-light'>Protein (g)<br/><strong>" +
+            esc(m.protein != null ? m.protein : "—") +
+            "</strong></div></div>" +
+            "<div class='col'><div class='border rounded p-2 bg-light'>Carbs (g)<br/><strong>" +
+            esc(m.carbs != null ? m.carbs : "—") +
+            "</strong></div></div>" +
+            "<div class='col'><div class='border rounded p-2 bg-light'>Fats (g)<br/><strong>" +
+            esc(m.fats != null ? m.fats : "—") +
+            "</strong></div></div>" +
+            "</div>" +
+            "<h6 class='mt-1'>Summary</h6><p class='small'>" +
+            esc(m.summary || "—") +
+            "</p>" +
+            "<h6>Ingredients</h6><ul class='mb-2'>" +
+            (ing || "<li class='small'>—</li>") +
+            "</ul>" +
+            "<h6>Recommendations</h6><ol class='ps-3 small flex-grow-1 mb-0'>" +
+            (rec || "<li class='small'>—</li>") +
+            "</ol>" +
+            "</div></div>";
+          results.appendChild(col);
+        });
+      }
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -168,6 +256,8 @@
         ).value;
         loading.hidden = false;
         results.innerHTML = "";
+        searchSection.classList.add("d-none");
+        assistantNote.classList.add("d-none");
         try {
           const res = await fetch(form.action, {
             method: "POST",
@@ -176,14 +266,24 @@
           });
           const data = await res.json();
           loading.hidden = true;
+          if (data.disclaimer) safety.textContent = data.disclaimer;
           if (data.error) {
-            renderError(data.error);
+            renderError(data.error, data.disclaimer);
             return;
           }
-          renderMeals(data.meals);
+          renderSearch(data.search_results);
+          if (data.meals && data.meals.length > 0) {
+            renderMeals(data.meals);
+          } else {
+            results.innerHTML =
+              "<p class='text-center text-secondary'>No structured meal analysis this time.</p>";
+          }
+          renderAssistantNote(data.assistant_message || null);
         } catch (err) {
           loading.hidden = true;
-          renderError("Something went wrong. Check your network and try again.");
+          renderError(
+            "Something went wrong. Check your network and try again."
+          );
         }
       });
     </script>
